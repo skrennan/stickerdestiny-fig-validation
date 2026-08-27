@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0b1020">
+  <title>Destiny Show — Gerador de Produção</title>
+  <link rel="stylesheet" href="estilo.css">
+
+  <script src="vendor/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+  <header class="topo">
+    <div>
+      <p class="eyebrow">DESTINY SHOW</p>
+      <h1>Gerador definitivo de produção</h1>
+      <p class="subtitulo">
+        Distribuição proporcional, QR único por cópia e PDFs em lotes prontos para produção.
+      </p>
+    </div>
+    <div class="topo-badges">
+      <span class="badge">49 × 69 mm</span>
+      <span class="badge badge-verde">QR assinado</span>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="painel">
+      <div class="titulo-secao">
+        <div>
+          <p class="passo">1 · PROJETO</p>
+          <h2>Configuração geral</h2>
+        </div>
+        <button id="btnSalvarConfig" class="btn secundario pequeno" type="button">
+          Salvar configurações
+        </button>
+      </div>
+
+      <div class="grade-campos grade-4">
+        <div class="campo">
+          <label for="nomeProjeto">Nome do projeto</label>
+          <input id="nomeProjeto" value="Destiny Show">
+        </div>
+
+        <div class="campo">
+          <label for="codigoProjeto">Código no token</label>
+          <input id="codigoProjeto" value="DESTINY2026">
+        </div>
+
+        <div class="campo">
+          <label for="totalProducao">Total da produção</label>
+          <input id="totalProducao" type="number" min="1000" step="1000" value="200000">
+        </div>
+
+        <div class="campo">
+          <label for="urlValidacao">Página do Netlify</label>
+          <input id="urlValidacao" type="url" placeholder="https://seu-site.netlify.app">
+        </div>
+      </div>
+
+      <div class="campo campo-segredo">
+        <label for="qrSecret">QR_SECRET</label>
+        <div class="linha-input">
+          <input id="qrSecret" type="password" placeholder="Cole os 64 caracteres do segredo privado" autocomplete="new-password">
+          <button id="btnMostrarSecret" class="btn secundario" type="button">Mostrar</button>
+        </div>
+        <small>
+          O segredo não é salvo automaticamente. Use exatamente o mesmo QR_SECRET do Worker.
+        </small>
+      </div>
+    </section>
+
+    <section class="painel">
+      <div class="titulo-secao">
+        <div>
+          <p class="passo">2 · DISTRIBUIÇÃO</p>
+          <h2>Perfil proporcional Destiny</h2>
+        </div>
+        <span id="statusDistribuicao" class="status-pill status-ok">100% fechado</span>
+      </div>
+
+      <div class="tabela-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Raridade</th>
+              <th>Percentual</th>
+              <th>Regra por time</th>
+              <th>Artes importadas</th>
+              <th>Total da raridade</th>
+              <th>Base / arte</th>
+              <th>Artes com +1</th>
+              <th>Faixa</th>
+            </tr>
+          </thead>
+          <tbody id="tabelaDistribuicao"></tbody>
+          <tfoot>
+            <tr>
+              <th>Total</th>
+              <th>100%</th>
+              <th>Variável</th>
+              <th id="rodapeArtes">0</th>
+              <th id="rodapeTotal">200.000</th>
+              <th colspan="3">—</th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
+
+    <section class="grade-dupla">
+      <article class="painel">
+        <div class="titulo-secao">
+          <div>
+            <p class="passo">3 · ARTES</p>
+            <h2>Importar figurinhas prontas</h2>
+          </div>
+          <span id="contadorArtes" class="badge">0 / 1.000</span>
+        </div>
+
+        <div class="importacao-grid">
+          <div>
+            <div class="campo">
+              <label for="raridadeUpload">Raridade</label>
+              <select id="raridadeUpload">
+                <option value="comum">Comum</option>
+                <option value="incomum">Incomum</option>
+                <option value="rara">Rara</option>
+                <option value="epica">Épica</option>
+                <option value="lendaria">Lendária</option>
+              </select>
+            </div>
+
+            <label class="dropzone">
+              <input id="inputArtes" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
+              <strong>Selecionar imagens</strong>
+              <span>As selecionadas recebem a raridade acima</span>
+            </label>
+          </div>
+
+          <div>
+            <p class="mini-titulo">Ou importar uma pasta organizada</p>
+            <label class="dropzone dropzone-pasta">
+              <input id="inputPasta" type="file" accept="image/png,image/jpeg,image/webp" webkitdirectory multiple hidden>
+              <strong>Selecionar pasta</strong>
+              <span>Reconhece COMUM, INCOMUM, RARA, EPICA e LENDARIA pelo caminho; a quantidade por time pode variar</span>
+            </label>
+          </div>
+        </div>
+
+        <div id="progressoImportacao" class="progresso-bloco" hidden>
+          <div class="progresso-topo">
+            <span id="textoImportacao">Importando...</span>
+            <strong id="percentualImportacao">0%</strong>
+          </div>
+          <div class="barra"><span id="barraImportacao"></span></div>
+        </div>
+
+        <div class="persistencia-card">
+          <div class="persistencia-info">
+            <div class="persistencia-status-linha">
+              <span id="persistenciaIndicador" class="persistencia-indicador"></span>
+              <strong id="statusPersistencia">Salvamento automático iniciando...</strong>
+            </div>
+            <small id="detalhePersistencia">As artes serão guardadas no armazenamento persistente do navegador.</small>
+          </div>
+          <div class="acoes persistencia-acoes">
+            <button id="btnSalvarAgora" class="btn secundario pequeno" type="button">Salvar agora</button>
+            <button id="btnBackupProjeto" class="btn secundario pequeno" type="button">Baixar backup do projeto</button>
+            <button id="btnRestaurarBackup" class="btn fantasma pequeno" type="button">Restaurar backup</button>
+            <input id="inputRestaurarBackup" type="file" accept="application/json,.json" hidden>
+          </div>
+        </div>
+
+        <div class="aviso">
+          <strong>Quantidade por time livre:</strong> um time pode ter 4, 5 ou 6 incomuns e 2 ou 3 raras. O sistema usa a raridade real de cada arquivo e só exige 1.000 artes no total para a produção final.
+        </div>
+
+        <div id="completude" class="completude"></div>
+
+        <div class="editor-raridade">
+          <div class="editor-raridade-topo">
+            <div>
+              <p class="mini-titulo">Corrigir raridade de uma arte já importada</p>
+              <small>Selecione a figurinha e escolha a nova raridade. A contagem e o arte_id serão atualizados automaticamente.</small>
+            </div>
+          </div>
+
+          <div class="editor-raridade-grid">
+            <div class="campo">
+              <label for="arteEditarSelect">Figurinha</label>
+              <select id="arteEditarSelect">
+                <option value="">Nenhuma arte importada</option>
+              </select>
+            </div>
+
+            <div class="campo">
+              <label for="novaRaridadeSelect">Nova raridade</label>
+              <select id="novaRaridadeSelect">
+                <option value="comum">Comum</option>
+                <option value="incomum">Incomum</option>
+                <option value="rara">Rara</option>
+                <option value="epica">Épica</option>
+                <option value="lendaria">Lendária</option>
+              </select>
+            </div>
+
+            <button id="btnAlterarRaridade" class="btn primario" type="button">Alterar raridade</button>
+          </div>
+
+          <div id="raridadeAtualInfo" class="raridade-atual-info">Importe uma arte para editar.</div>
+        </div>
+
+        <div class="acoes">
+          <button id="btnLimparArtes" class="btn perigo pequeno" type="button">Limpar todas as artes</button>
+          <button id="btnExportarPlano" class="btn secundario pequeno" type="button">Baixar plano CSV</button>
+        </div>
+      </article>
+
+      <article class="painel">
+        <div class="titulo-secao">
+          <div>
+            <p class="passo">4 · QR CODE</p>
+            <h2>Posição na figurinha</h2>
+          </div>
+        </div>
+
+        <div class="qr-editor">
+          <div>
+            <div class="preview-toolbar">
+              <div class="campo campo-preview">
+                <label for="previewArteSelect">Arte da pré-visualização</label>
+                <select id="previewArteSelect">
+                  <option value="">Selecione uma arte importada</option>
+                </select>
+              </div>
+
+              <div class="preview-acoes">
+                <button id="btnPreviewAnterior" class="btn fantasma pequeno" type="button">←</button>
+                <button id="btnPreviewProxima" class="btn fantasma pequeno" type="button">→</button>
+              </div>
+            </div>
+
+            <div class="preview-info" id="previewInfo">Importe uma arte para visualizar.</div>
+
+            <div class="preview-wrap">
+              <div id="previewFigurinha" class="preview-figurinha">
+                <div id="previewPlaceholder" class="preview-placeholder">
+                  Importe e escolha uma arte para visualizar
+                </div>
+                <div id="previewQr" class="preview-qr">
+                  <div id="previewQrInner" class="preview-qr-inner"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="qr-controles">
+            <div class="grade-campos grade-2">
+              <div class="campo">
+                <label for="qrTamanho">QR</label>
+                <div class="unidade">
+                  <input id="qrTamanho" type="number" min="8" max="25" step="0.1" value="12">
+                  <span>mm</span>
+                </div>
+              </div>
+
+              <div class="campo">
+                <label for="qrRespiro">Fundo branco</label>
+                <div class="unidade">
+                  <input id="qrRespiro" type="number" min="0" max="4" step="0.1" value="0.8">
+                  <span>mm</span>
+                </div>
+              </div>
+
+              <div class="campo">
+                <label for="qrX">Posição X</label>
+                <div class="unidade">
+                  <input id="qrX" type="number" min="0" step="0.1" value="33.9">
+                  <span>mm</span>
+                </div>
+              </div>
+
+              <div class="campo">
+                <label for="qrY">Posição Y</label>
+                <div class="unidade">
+                  <input id="qrY" type="number" min="0" step="0.1" value="53.9">
+                  <span>mm</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="subseparador">
+              <p class="mini-titulo">Estilo do QR Code</p>
+            </div>
+
+            <div class="grade-campos grade-2 grade-estilo-qr">
+              <div class="campo">
+                <label for="qrPresetVisual">Preset visual</label>
+                <select id="qrPresetVisual">
+                  <option value="padrao">Padrão</option>
+                  <option value="clean">Clean</option>
+                  <option value="destiny" selected>Destiny</option>
+                  <option value="gold">Gold</option>
+                </select>
+              </div>
+
+              <div class="campo">
+                <label for="qrRaio">Raio da moldura</label>
+                <div class="unidade">
+                  <input id="qrRaio" type="number" min="0" max="8" step="0.1" value="2.8">
+                  <span>mm</span>
+                </div>
+              </div>
+
+              <div class="campo">
+                <label for="qrCorEscura">Cor escura</label>
+                <div class="cor-campo">
+                  <input id="qrCorEscura" type="color" value="#0b1b52">
+                  <input id="qrCorEscuraTexto" type="text" value="#0B1B52" maxlength="7">
+                </div>
+              </div>
+
+              <div class="campo">
+                <label for="qrCorClara">Cor clara</label>
+                <div class="cor-campo">
+                  <input id="qrCorClara" type="color" value="#ffffff">
+                  <input id="qrCorClaraTexto" type="text" value="#FFFFFF" maxlength="7">
+                </div>
+              </div>
+
+              <div class="campo">
+                <label for="qrCorMoldura">Moldura</label>
+                <div class="cor-campo">
+                  <input id="qrCorMoldura" type="color" value="#ffffff">
+                  <input id="qrCorMolduraTexto" type="text" value="#FFFFFF" maxlength="7">
+                </div>
+              </div>
+
+              <div class="campo">
+                <label for="qrCorBorda">Borda</label>
+                <div class="cor-campo">
+                  <input id="qrCorBorda" type="color" value="#5a8cff">
+                  <input id="qrCorBordaTexto" type="text" value="#5A8CFF" maxlength="7">
+                </div>
+              </div>
+
+              <div class="campo">
+                <label for="qrEspessuraBorda">Espessura da borda</label>
+                <div class="unidade">
+                  <input id="qrEspessuraBorda" type="number" min="0" max="3" step="0.1" value="0.6">
+                  <span>mm</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="presets">
+              <button class="btn fantasma pequeno preset" data-pos="superior-esquerdo" type="button">↖</button>
+              <button class="btn fantasma pequeno preset" data-pos="superior-direito" type="button">↗</button>
+              <button class="btn fantasma pequeno preset" data-pos="inferior-esquerdo" type="button">↙</button>
+              <button class="btn fantasma pequeno preset" data-pos="inferior-direito" type="button">↘</button>
+            </div>
+
+            <small class="ajuda">
+              Arraste o QR na prévia ou ajuste X/Y em milímetros. Use cores escuras sobre fundo claro para manter a leitura da câmera.
+            </small>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="painel">
+      <div class="titulo-secao">
+        <div>
+          <p class="passo">5 · IMPRESSÃO</p>
+          <h2>Formato das páginas</h2>
+        </div>
+        <span id="capacidadePagina" class="badge">16 por página</span>
+      </div>
+
+      <div class="grade-campos grade-6">
+        <div class="campo">
+          <label for="formatoPapel">Papel</label>
+          <select id="formatoPapel">
+            <option value="a4">A4</option>
+            <option value="a3">A3</option>
+          </select>
+        </div>
+
+        <div class="campo">
+          <label for="larguraFigurinha">Largura</label>
+          <div class="unidade">
+            <input id="larguraFigurinha" type="number" min="20" step="0.1" value="49">
+            <span>mm</span>
+          </div>
+        </div>
+
+        <div class="campo">
+          <label for="alturaFigurinha">Altura</label>
+          <div class="unidade">
+            <input id="alturaFigurinha" type="number" min="20" step="0.1" value="69">
+            <span>mm</span>
+          </div>
+        </div>
+
+        <div class="campo">
+          <label for="espacoFigurinhas">Espaço</label>
+          <div class="unidade">
+            <input id="espacoFigurinhas" type="number" min="0" step="0.1" value="2">
+            <span>mm</span>
+          </div>
+        </div>
+
+        <div class="campo">
+          <label for="qualidadeImagem">Imagem no PDF</label>
+          <select id="qualidadeImagem">
+            <option value="520">Alta · 520 px</option>
+            <option value="650" selected>Impressão · 650 px</option>
+            <option value="800">Máxima · 800 px</option>
+          </select>
+        </div>
+
+        <label class="check-card">
+          <input id="marcasCorte" type="checkbox" checked>
+          <span>
+            <strong>Marcas de corte</strong>
+            <small>Linhas discretas fora da arte</small>
+          </span>
+        </label>
+      </div>
+    </section>
+
+    <section class="painel">
+      <div class="titulo-secao">
+        <div>
+          <p class="passo">6 · LOTES</p>
+          <h2>Gerar produção</h2>
+        </div>
+        <span id="statusProducao" class="status-pill status-pendente">Aguardando 1.000 artes</span>
+      </div>
+
+      <div class="grade-campos grade-5">
+        <div class="campo">
+          <label for="modoOrdem">Ordem no PDF</label>
+          <select id="modoOrdem">
+            <option value="agrupado" selected>Agrupado por arte · recomendado</option>
+            <option value="balanceado">Balanceado por rodadas</option>
+          </select>
+        </div>
+
+        <div class="campo">
+          <label for="tamanhoLote">Figurinhas por lote</label>
+          <input id="tamanhoLote" type="number" min="16" max="5000" step="16" value="1000">
+        </div>
+
+        <div class="campo">
+          <label for="numeroLote">Número do lote</label>
+          <input id="numeroLote" type="number" min="1" step="1" value="1">
+        </div>
+
+        <div class="resumo-lote">
+          <span>Intervalo</span>
+          <strong id="intervaloLote">1–1.000</strong>
+          <small id="totalLotes">200 lotes</small>
+        </div>
+
+        <div class="resumo-lote">
+          <span>Páginas estimadas</span>
+          <strong id="paginasLote">63</strong>
+          <small id="itensLote">1.000 figurinhas</small>
+        </div>
+      </div>
+
+      <div class="navegacao-lote">
+        <button id="btnLoteAnterior" class="btn fantasma pequeno" type="button">← Lote anterior</button>
+        <button id="btnProximoLote" class="btn fantasma pequeno" type="button">Próximo lote →</button>
+      </div>
+
+      <div id="avisoModo" class="aviso">
+        <strong>Agrupado por arte:</strong> PDFs menores e mais rápidos, pois a arte é reutilizada e somente o QR muda.
+      </div>
+
+      <div class="acoes saida-acoes">
+        <button id="btnTestarToken" class="btn secundario" type="button">Testar primeiro QR</button>
+        <button id="btnCsvLote" class="btn secundario" type="button">Baixar CSV do lote</button>
+        <button id="btnPdfTeste" class="btn secundario" type="button">PDF de teste</button>
+        <button id="btnGerarPdf" class="btn primario" type="button">Gerar PDF do lote</button>
+      </div>
+
+      <div id="resultadoTeste" class="resultado" hidden></div>
+
+      <div id="progressoGeracao" class="progresso-bloco" hidden>
+        <div class="progresso-topo">
+          <span id="textoGeracao">Preparando...</span>
+          <strong id="percentualGeracao">0%</strong>
+        </div>
+        <div class="barra"><span id="barraGeracao"></span></div>
+      </div>
+    </section>
+
+    <section class="painel painel-seguranca">
+      <div>
+        <p class="passo">SEGURANÇA</p>
+        <h2>Antes da produção definitiva</h2>
+      </div>
+      <p>
+        Gere primeiro o PDF de teste, escaneie o QR, valide no Netlify e tente usar o mesmo código novamente.
+        Só depois gere os lotes definitivos. Não altere o QR_SECRET durante a produção.
+      </p>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
