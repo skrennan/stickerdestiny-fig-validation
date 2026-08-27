@@ -133,20 +133,32 @@
             </div>
 
             <label class="dropzone">
-              <input id="inputArtes" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
+              <input id="inputArtes" type="file" accept="image/*,.png,.jpg,.jpeg,.webp,.bmp,.gif,.avif,.jfif" multiple hidden>
               <strong>Selecionar imagens</strong>
               <span>As selecionadas recebem a raridade acima</span>
             </label>
           </div>
 
           <div>
-            <p class="mini-titulo">Ou importar uma pasta organizada</p>
+            <p class="mini-titulo">Ou importar a pasta completa</p>
             <label class="dropzone dropzone-pasta">
-              <input id="inputPasta" type="file" accept="image/png,image/jpeg,image/webp" webkitdirectory multiple hidden>
+              <input id="inputPasta" type="file" accept="image/*,.png,.jpg,.jpeg,.webp,.bmp,.gif,.avif,.jfif" webkitdirectory multiple hidden>
               <strong>Selecionar pasta</strong>
-              <span>Reconhece COMUM, INCOMUM, RARA, EPICA e LENDARIA pelo caminho; a quantidade por time pode variar</span>
+              <span>Importa todas as imagens da pasta raiz. Se não reconhecer a raridade pelo caminho, usa a raridade selecionada acima e depois você pode corrigir em lote</span>
+            </label>
+            <label class="check-card check-importacao">
+              <input id="modoEstritoPasta" type="checkbox">
+              <span>
+                <strong>Apenas avisar raridades não reconhecidas</strong>
+                <small>Mesmo sem raridade reconhecida, a imagem será importada. O relatório só informa quantas entraram usando a raridade padrão.</small>
+              </span>
             </label>
           </div>
+        </div>
+
+        <div id="relatorioImportacao" class="relatorio-importacao" hidden></div>
+        <div id="avisoModoLocal" class="aviso" hidden>
+          <strong>Teste local:</strong> se você abriu o <code>index.html</code> diretamente, alguns navegadores podem bloquear o armazenamento persistente. Nesta versão isso não impede mais a importação das artes.
         </div>
 
         <div id="progressoImportacao" class="progresso-bloco" hidden>
@@ -182,16 +194,28 @@
         <div class="editor-raridade">
           <div class="editor-raridade-topo">
             <div>
-              <p class="mini-titulo">Corrigir raridade de uma arte já importada</p>
-              <small>Selecione a figurinha e escolha a nova raridade. A contagem e o arte_id serão atualizados automaticamente.</small>
+              <p class="mini-titulo">Corrigir raridade em lote</p>
+              <small>Filtre por time ou raridade atual, selecione várias figurinhas e altere tudo de uma vez. A contagem e os arte_id serão atualizados automaticamente.</small>
             </div>
           </div>
 
-          <div class="editor-raridade-grid">
+          <div class="editor-raridade-grid editor-raridade-filtros">
             <div class="campo">
-              <label for="arteEditarSelect">Figurinha</label>
-              <select id="arteEditarSelect">
-                <option value="">Nenhuma arte importada</option>
+              <label for="filtroTimeSelect">Time / pasta</label>
+              <select id="filtroTimeSelect">
+                <option value="">Todos os times</option>
+              </select>
+            </div>
+
+            <div class="campo">
+              <label for="filtroRaridadeAtualSelect">Raridade atual</label>
+              <select id="filtroRaridadeAtualSelect">
+                <option value="">Todas as raridades</option>
+                <option value="comum">Comum</option>
+                <option value="incomum">Incomum</option>
+                <option value="rara">Rara</option>
+                <option value="epica">Épica</option>
+                <option value="lendaria">Lendária</option>
               </select>
             </div>
 
@@ -205,11 +229,34 @@
                 <option value="lendaria">Lendária</option>
               </select>
             </div>
-
-            <button id="btnAlterarRaridade" class="btn primario" type="button">Alterar raridade</button>
           </div>
 
-          <div id="raridadeAtualInfo" class="raridade-atual-info">Importe uma arte para editar.</div>
+          <div class="editor-lote-layout">
+            <div class="campo campo-lote-artes">
+              <label for="arteEditarSelect">Figurinhas do filtro</label>
+              <select id="arteEditarSelect" multiple size="12"></select>
+              <small>Use Ctrl/Cmd ou Shift para selecionar várias figurinhas. A prévia abaixo mostra a primeira selecionada.</small>
+            </div>
+
+            <div class="editor-preview-card">
+              <p class="mini-titulo">Pré-visualização da figurinha selecionada</p>
+              <div id="selectedArtePreviewInfo" class="preview-info preview-info-edicao">Clique em uma figurinha da lista para visualizar melhor.</div>
+              <div class="editor-preview-wrap">
+                <div id="selectedArtePreview" class="preview-figurinha preview-figurinha-edicao">
+                  <div id="selectedArtePreviewPlaceholder" class="preview-placeholder">Selecione uma figurinha para visualizar o nome e conferir a arte antes de alterar a raridade.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="editor-raridade-acoes editor-raridade-acoes-lote">
+            <button id="btnSelecionarFiltradas" class="btn secundario pequeno" type="button">Selecionar todas do filtro</button>
+            <button id="btnLimparSelecaoArtes" class="btn fantasma pequeno" type="button">Limpar seleção</button>
+            <button id="btnAlterarRaridade" class="btn primario" type="button">Alterar raridade das selecionadas</button>
+            <button id="btnExcluirArte" class="btn perigo" type="button">Excluir selecionadas</button>
+          </div>
+
+          <div id="raridadeAtualInfo" class="raridade-atual-info">Importe artes para editar em lote.</div>
         </div>
 
         <div class="acoes">

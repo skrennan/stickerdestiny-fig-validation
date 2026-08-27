@@ -37,12 +37,23 @@
     raridadeUpload: $("#raridadeUpload"),
     inputArtes: $("#inputArtes"),
     inputPasta: $("#inputPasta"),
+    modoEstritoPasta: $("#modoEstritoPasta"),
+    relatorioImportacao: $("#relatorioImportacao"),
+    avisoModoLocal: $("#avisoModoLocal"),
     contadorArtes: $("#contadorArtes"),
     completude: $("#completude"),
     arteEditarSelect: $("#arteEditarSelect"),
+    filtroTimeSelect: $("#filtroTimeSelect"),
+    filtroRaridadeAtualSelect: $("#filtroRaridadeAtualSelect"),
     novaRaridadeSelect: $("#novaRaridadeSelect"),
+    btnSelecionarFiltradas: $("#btnSelecionarFiltradas"),
+    btnLimparSelecaoArtes: $("#btnLimparSelecaoArtes"),
     btnAlterarRaridade: $("#btnAlterarRaridade"),
+    btnExcluirArte: $("#btnExcluirArte"),
     raridadeAtualInfo: $("#raridadeAtualInfo"),
+    selectedArtePreviewInfo: $("#selectedArtePreviewInfo"),
+    selectedArtePreview: $("#selectedArtePreview"),
+    selectedArtePreviewPlaceholder: $("#selectedArtePreviewPlaceholder"),
     btnLimparArtes: $("#btnLimparArtes"),
     btnExportarPlano: $("#btnExportarPlano"),
     progressoImportacao: $("#progressoImportacao"),
@@ -121,6 +132,7 @@
   let offsetQr = { x: 0, y: 0 };
   let previewArteId = "";
   let previewObjectUrl = "";
+  let selectedArtePreviewUrl = "";
   let raridadeOverrides = carregarOverridesRaridade();
   let dbPromise = null;
   let salvandoPersistencia = false;
@@ -619,22 +631,23 @@
     ).hidden = true;
   }
 
-  function sha256Hex(texto) {
-    return crypto.subtle
-      .digest("SHA-256", new TextEncoder().encode(texto))
-      .then(buffer =>
-        Array.from(new Uint8Array(buffer))
-          .map(byte => byte.toString(16).padStart(2, "0"))
-          .join("")
-      );
+  function hashEstavelArte(texto) {
+    const valor = String(texto || "");
+    const sementes = [0x811c9dc5, 0x9e3779b9, 0x85ebca6b];
+    const partes = sementes.map(semente => {
+      let hash = semente >>> 0;
+      for (let i = 0; i < valor.length; i += 1) {
+        hash ^= valor.charCodeAt(i);
+        hash = Math.imul(hash, 0x01000193) >>> 0;
+      }
+      return hash.toString(16).padStart(8, "0");
+    });
+    return partes.join("");
   }
 
   async function idEstavelArte(file, raridade) {
     const caminho = file.webkitRelativePath || file.caminho || file.name || file.nome;
-    const hash = await sha256Hex(
-      `${raridade}|${normalizarTexto(caminho)}`
-    );
-
+    const hash = hashEstavelArte(`${raridade}|${normalizarTexto(caminho)}`);
     return `${PERFIL[raridade].prefixo}-${hash.slice(0, 12).toUpperCase()}`;
   }
 
@@ -654,13 +667,112 @@
     return null;
   }
 
+  function partesCaminhoArquivo(fileOuArte) {
+    const caminho = String(
+      fileOuArte?.webkitRelativePath ||
+      fileOuArte?.caminho ||
+      fileOuArte?.name ||
+      fileOuArte?.nome ||
+      ""
+    );
+
+    return caminho
+      .split(/[\\/]/)
+      .map(parte => parte.trim())
+      .filter(Boolean);
+  }
+
+  function nomePastaEhRaridade(nome) {
+    const token = normalizarTexto(nome).replace(/[^A-Z0-9]/g, "");
+    return [
+      "COMUM", "COMUNS",
+      "INCOMUM", "INCOMUNS",
+      "RARA", "RARAS",
+      "EPICA", "EPICAS",
+      "LENDARIA", "LENDARIAS"
+    ].includes(token);
+  }
+
+  function detectarTimePeloCaminho(fileOuArte) {
+    const partes = partesCaminhoArquivo(fileOuArte);
+    if (!partes.length) return "SEM_TIME";
+
+    // Procura a pasta imediatamente anterior à pasta de raridade.
+    for (let i = 0; i < partes.length; i += 1) {
+      if (nomePastaEhRaridade(partes[i]) && i > 0) {
+        return partes[i - 1];
+      }
+    }
+
+    // Estrutura típica: PASTA_RAIZ/TIME/arquivo.png
+    if (partes.length >= 3) {
+      return partes[partes.length - 2];
+    }
+
+    // Se só existir TIME/arquivo.png.
+    if (partes.length === 2) {
+      return partes[0];
+    }
+
+    return "SEM_TIME";
+  }
+
+  function esconderRelatorioImportacao() {
+    if (!el.relatorioImportacao) return;
+    el.relatorioImportacao.hidden = true;
+    el.relatorioImportacao.innerHTML = "";
+  }
+
+  function mostrarRelatorioImportacao(relatorio) {
+    if (!el.relatorioImportacao || !relatorio) return;
+
+    const cardsRaridade = ORDEM_RARIDADES.map(chave => `
+      <div class="card">
+        <strong>${PERFIL[chave].nome}</strong><br>
+        ${formatarNumero(relatorio.porRaridade?.[chave] || 0)} arquivo(s)
+      </div>
+    `).join("");
+
+    const times = Object.entries(relatorio.porTime || {})
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "pt-BR", { numeric: true, sensitivity: "base" }))
+      .slice(0, 15)
+      .map(([time, quantidade]) => `<li><strong>${escapeHtml(time)}</strong>: ${formatarNumero(quantidade)}</li>`)
+      .join("");
+
+    const arquivosSemRaridade = (relatorio.ignoradasSemRaridade || [])
+      .slice(0, 10)
+      .map(caminho => `<li><code>${escapeHtml(caminho)}</code></li>`)
+      .join("");
+
+    el.relatorioImportacao.innerHTML = `
+      <h3>Relatório da importação</h3>
+      <p>
+        <strong>Encontradas:</strong> ${formatarNumero(relatorio.totalArquivos || 0)} ·
+        <strong>Adicionadas:</strong> ${formatarNumero(relatorio.adicionadas || 0)} ·
+        <strong>Repetidas:</strong> ${formatarNumero(relatorio.ignoradasRepetidas || 0)} ·
+        <strong>Sem raridade reconhecida:</strong> ${formatarNumero(relatorio.importadasSemRaridade || 0)}
+      </p>
+      <div class="relatorio-grid">${cardsRaridade}</div>
+      ${times ? `<p><strong>Times/pastas identificados:</strong></p><ul>${times}</ul>` : ""}
+      ${arquivosSemRaridade ? `<p><strong>Arquivos sem raridade reconhecida (foram importados usando a raridade padrão):</strong></p><ul>${arquivosSemRaridade}</ul>` : ""}
+    `;
+    el.relatorioImportacao.hidden = false;
+  }
+
   async function importarArquivos(files, porPasta = false) {
-    const validos = [...files].filter(file => file.type.startsWith("image/"));
+    const extensaoImagem = /\.(png|jpe?g|webp|bmp|gif|avif|jfif)$/i;
+    const validos = [...files].filter(file =>
+      String(file.type || "").startsWith("image/") || extensaoImagem.test(file.name || "")
+    );
     solicitarPersistenciaArmazenamento().catch(() => false);
 
     if (!validos.length) {
       mostrarToast("Nenhuma imagem válida foi selecionada.", true);
       return;
+    }
+
+    if (!porPasta) {
+      esconderRelatorioImportacao();
     }
 
     const existentes = new Set(
@@ -669,21 +781,42 @@
 
     let adicionadas = 0;
     let ignoradas = 0;
+    let falhasPersistencia = 0;
+    let persistenciaDisponivelDuranteImportacao = true;
+    const relatorio = porPasta ? {
+      totalArquivos: validos.length,
+      adicionadas: 0,
+      ignoradasRepetidas: 0,
+      ignoradasSemRaridade: [],
+      importadasSemRaridade: 0,
+      porRaridade: Object.fromEntries(ORDEM_RARIDADES.map(chave => [chave, 0])),
+      porTime: {},
+    } : null;
 
-    mostrarProgresso("importacao", "Preparando artes...", 0, validos.length);
+    mostrarProgresso("importacao", porPasta ? "Lendo pasta completa..." : "Preparando artes...", 0, validos.length);
 
     for (let i = 0; i < validos.length; i += 1) {
       const file = validos[i];
       const caminho = file.webkitRelativePath || file.name;
       const overrideSalvo = raridadeOverrides[chaveOverride(file)];
-      const raridadeDetectada = porPasta
-        ? (detectarRaridadePeloCaminho(file) || el.raridadeUpload.value)
+      const raridadeDetectada = porPasta ? detectarRaridadePeloCaminho(file) : null;
+
+      if (porPasta && !raridadeDetectada && !overrideSalvo && relatorio) {
+        relatorio.importadasSemRaridade += 1;
+        if (el.modoEstritoPasta.checked) {
+          relatorio.ignoradasSemRaridade.push(caminho);
+        }
+      }
+
+      const raridadeBase = porPasta
+        ? (raridadeDetectada || el.raridadeUpload.value)
         : el.raridadeUpload.value;
-      const raridade = PERFIL[overrideSalvo] ? overrideSalvo : raridadeDetectada;
+      const raridade = PERFIL[overrideSalvo] ? overrideSalvo : raridadeBase;
       const chave = `${raridade}|${caminho}`;
 
       if (existentes.has(chave)) {
         ignoradas += 1;
+        if (relatorio) relatorio.ignoradasRepetidas += 1;
         mostrarProgresso("importacao", `Conferindo ${i + 1}/${validos.length}`, i + 1, validos.length);
         continue;
       }
@@ -705,14 +838,22 @@
 
       existentes.add(chave);
       adicionadas += 1;
+      if (relatorio) {
+        relatorio.adicionadas += 1;
+        relatorio.porRaridade[raridade] = (relatorio.porRaridade[raridade] || 0) + 1;
+        const time = detectarTimePeloCaminho(file);
+        relatorio.porTime[time] = (relatorio.porTime[time] || 0) + 1;
+      }
 
-      mostrarProgresso("importacao", `Importando e salvando ${i + 1}/${validos.length}`, i + 1, validos.length);
-      try {
-        await salvarArtePersistente(arteNova);
-      } catch (erro) {
-        console.error(erro);
-        atualizarStatusPersistencia('erro');
-        throw new Error(`Não foi possível salvar ${file.name} no armazenamento persistente. ${erro.message || ''}`.trim());
+      mostrarProgresso("importacao", porPasta ? `Importando pasta ${i + 1}/${validos.length}` : `Importando e salvando ${i + 1}/${validos.length}`, i + 1, validos.length);
+      if (persistenciaDisponivelDuranteImportacao) {
+        try {
+          await salvarArtePersistente(arteNova);
+        } catch (erro) {
+          console.error("Falha no salvamento persistente durante a importação:", erro);
+          falhasPersistencia += 1;
+          persistenciaDisponivelDuranteImportacao = false;
+        }
       }
 
       if (i % 30 === 0) {
@@ -722,11 +863,31 @@
 
     esconderProgresso("importacao");
     atualizarTudo();
-    await atualizarStatusPersistencia('ok');
+
+    if (falhasPersistencia) {
+      await atualizarStatusPersistencia('erro').catch(() => {});
+      if (el.statusPersistencia) {
+        el.statusPersistencia.textContent = "Artes carregadas, mas o navegador local bloqueou o salvamento automático";
+      }
+      if (el.detalhePersistencia) {
+        el.detalhePersistencia.textContent = "Você pode testar as artes normalmente. No Netlify/localhost o IndexedDB deve funcionar; não feche esta página se quiser manter este teste local.";
+      }
+    } else {
+      await atualizarStatusPersistencia('ok');
+    }
+
+    if (relatorio) {
+      mostrarRelatorioImportacao(relatorio);
+    }
+
+    const extras = [];
+    if (ignoradas) extras.push(`${ignoradas} repetida(s) ignorada(s)`);
+    if (relatorio?.importadasSemRaridade) extras.push(`${relatorio.importadasSemRaridade} importada(s) com a raridade padrão`);
+    if (falhasPersistencia) extras.push(`salvamento local indisponível, mas as artes foram carregadas`);
 
     mostrarToast(
       `${adicionadas} arte(s) adicionada(s)` +
-      (ignoradas ? ` · ${ignoradas} repetida(s) ignorada(s)` : "")
+      (extras.length ? ` · ${extras.join(' · ')}` : "")
     );
   }
 
@@ -911,95 +1072,297 @@
       `${formatarNumero(plano.totalImportadas)} / ${formatarNumero(TOTAL_ARTES_PROJETO)}`;
   }
 
-  function atualizarEditorRaridade() {
-    if (!el.arteEditarSelect) return;
-
-    const selecionadoAnterior = el.arteEditarSelect.value;
-    const lista = artes
-      .slice()
-      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { numeric: true, sensitivity: "base" }));
-
-    el.arteEditarSelect.innerHTML = lista.length
-      ? lista.map(arte =>
-          `<option value="${arte.id}">${escapeHtml(arte.nome)} · ${PERFIL[arte.raridade].nome}</option>`
-        ).join("")
-      : '<option value="">Nenhuma arte importada</option>';
-
-    const existeAnterior = lista.some(arte => arte.id === selecionadoAnterior);
-    const preferida = existeAnterior
-      ? selecionadoAnterior
-      : (previewArteId && lista.some(arte => arte.id === previewArteId) ? previewArteId : (lista[0]?.id || ""));
-
-    el.arteEditarSelect.value = preferida;
-    atualizarInfoEditorRaridade();
+  function revogarPreviewEdicaoAnterior() {
+    if (selectedArtePreviewUrl) {
+      try { URL.revokeObjectURL(selectedArtePreviewUrl); } catch {}
+      selectedArtePreviewUrl = "";
+    }
   }
 
-  function atualizarInfoEditorRaridade() {
-    const arte = artes.find(item => item.id === el.arteEditarSelect.value);
+  function primeiraArteSelecionadaEdicao() {
+    const primeiroId = idsSelecionadosEdicao()[0] || "";
+    return artes.find(arte => arte.id === primeiroId) || null;
+  }
 
-    if (!arte) {
-      el.novaRaridadeSelect.value = "comum";
-      el.btnAlterarRaridade.disabled = true;
-      el.raridadeAtualInfo.textContent = "Importe uma arte para editar.";
+  function atualizarPreviewEdicaoRaridade() {
+    if (!el.selectedArtePreview || !el.selectedArtePreviewInfo || !el.selectedArtePreviewPlaceholder) {
       return;
     }
 
-    el.btnAlterarRaridade.disabled = false;
-    el.novaRaridadeSelect.value = arte.raridade;
-    el.raridadeAtualInfo.textContent =
-      `Atual: ${PERFIL[arte.raridade].nome} · ${arte.nome} · ${arte.id}`;
+    const arte = primeiraArteSelecionadaEdicao();
+    const quantidadeSelecionadas = idsSelecionadosEdicao().length;
+
+    if (!arte) {
+      revogarPreviewEdicaoAnterior();
+      el.selectedArtePreview.style.backgroundImage = '';
+      el.selectedArtePreviewPlaceholder.hidden = false;
+      el.selectedArtePreviewInfo.textContent = artes.length
+        ? 'Clique em uma figurinha da lista para visualizar melhor.'
+        : 'Importe artes para habilitar a pré-visualização de edição.';
+      return;
+    }
+
+    const time = detectarTimePeloCaminho(arte);
+    const extras = quantidadeSelecionadas > 1
+      ? ` · ${formatarNumero(quantidadeSelecionadas)} selecionadas (mostrando a primeira)`
+      : '';
+
+    el.selectedArtePreviewInfo.textContent = `Time: ${time} · Arquivo: ${arte.nome} · Atual: ${PERFIL[arte.raridade].nome}${extras}`;
+
+    revogarPreviewEdicaoAnterior();
+    selectedArtePreviewUrl = URL.createObjectURL(arte.file);
+    const imagem = new Image();
+
+    imagem.onload = () => {
+      el.selectedArtePreview.style.backgroundImage = `url("${selectedArtePreviewUrl}")`;
+      el.selectedArtePreviewPlaceholder.hidden = true;
+    };
+
+    imagem.onerror = () => {
+      revogarPreviewEdicaoAnterior();
+      el.selectedArtePreview.style.backgroundImage = '';
+      el.selectedArtePreviewPlaceholder.hidden = false;
+      el.selectedArtePreviewInfo.textContent = `Não foi possível carregar a pré-visualização de ${arte.nome}.`;
+    };
+
+    imagem.src = selectedArtePreviewUrl;
+  }
+
+  function obterTimesImportados() {
+    return [...new Set(artes.map(arte => detectarTimePeloCaminho(arte)).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true, sensitivity: 'base' }));
+  }
+
+  function artesFiltradasParaEdicao() {
+    const time = el.filtroTimeSelect?.value || '';
+    const raridadeAtual = el.filtroRaridadeAtualSelect?.value || '';
+
+    return artes
+      .filter(arte => !time || detectarTimePeloCaminho(arte) === time)
+      .filter(arte => !raridadeAtual || arte.raridade === raridadeAtual)
+      .sort((a, b) => {
+        const timeA = detectarTimePeloCaminho(a);
+        const timeB = detectarTimePeloCaminho(b);
+        return timeA.localeCompare(timeB, 'pt-BR', { numeric: true, sensitivity: 'base' })
+          || a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true, sensitivity: 'base' });
+      });
+  }
+
+  function idsSelecionadosEdicao() {
+    if (!el.arteEditarSelect) return [];
+    return [...el.arteEditarSelect.options]
+      .filter(opcao => opcao.selected)
+      .map(opcao => opcao.value)
+      .filter(Boolean);
+  }
+
+  function atualizarEditorRaridade() {
+    if (!el.arteEditarSelect) return;
+
+    const timeAnterior = el.filtroTimeSelect.value;
+    const raridadeAnterior = el.filtroRaridadeAtualSelect.value;
+    const selecionadasAntes = new Set(idsSelecionadosEdicao());
+
+    const times = obterTimesImportados();
+    el.filtroTimeSelect.innerHTML = '<option value="">Todos os times</option>' +
+      times.map(time => `<option value="${escapeHtml(time)}">${escapeHtml(time)}</option>`).join('');
+    if (times.includes(timeAnterior)) {
+      el.filtroTimeSelect.value = timeAnterior;
+    } else {
+      el.filtroTimeSelect.value = '';
+    }
+    el.filtroRaridadeAtualSelect.value = PERFIL[raridadeAnterior] ? raridadeAnterior : '';
+
+    const lista = artesFiltradasParaEdicao();
+
+    el.arteEditarSelect.innerHTML = lista.length
+      ? lista.map(arte => {
+          const time = detectarTimePeloCaminho(arte);
+          return `<option value="${arte.id}">${escapeHtml(time)} · ${escapeHtml(arte.nome)} · ${PERFIL[arte.raridade].nome}</option>`;
+        }).join('')
+      : '<option value="">Nenhuma figurinha encontrada no filtro</option>';
+
+    [...el.arteEditarSelect.options].forEach(opcao => {
+      if (selecionadasAntes.has(opcao.value)) {
+        opcao.selected = true;
+      }
+    });
+
+    if (!idsSelecionadosEdicao().length && previewArteId && [...el.arteEditarSelect.options].some(opcao => opcao.value === previewArteId)) {
+      const opcaoPreview = [...el.arteEditarSelect.options].find(opcao => opcao.value === previewArteId);
+      if (opcaoPreview) opcaoPreview.selected = true;
+    }
+
+    atualizarInfoEditorRaridade();
+    atualizarPreviewEdicaoRaridade();
+  }
+
+  function atualizarInfoEditorRaridade() {
+    const ids = idsSelecionadosEdicao();
+    const visiveis = artesFiltradasParaEdicao();
+
+    el.btnSelecionarFiltradas.disabled = !visiveis.length;
+    el.btnLimparSelecaoArtes.disabled = !ids.length;
+    el.btnAlterarRaridade.disabled = !ids.length;
+    el.btnExcluirArte.disabled = !ids.length;
+
+    if (!artes.length) {
+      el.raridadeAtualInfo.textContent = 'Importe artes para editar em lote.';
+      atualizarPreviewEdicaoRaridade();
+      return;
+    }
+
+    if (!visiveis.length) {
+      el.raridadeAtualInfo.textContent = 'Nenhuma figurinha encontrada com os filtros atuais.';
+      atualizarPreviewEdicaoRaridade();
+      return;
+    }
+
+    if (!ids.length) {
+      el.raridadeAtualInfo.textContent = `${formatarNumero(visiveis.length)} figurinha(s) no filtro. Selecione uma ou várias para alterar em lote.`;
+      atualizarPreviewEdicaoRaridade();
+      return;
+    }
+
+    const selecionadas = artes.filter(arte => ids.includes(arte.id));
+    const porRaridade = Object.fromEntries(ORDEM_RARIDADES.map(chave => [chave, 0]));
+    selecionadas.forEach(arte => { porRaridade[arte.raridade] += 1; });
+    const resumo = ORDEM_RARIDADES
+      .filter(chave => porRaridade[chave] > 0)
+      .map(chave => `${PERFIL[chave].nome}: ${formatarNumero(porRaridade[chave])}`)
+      .join(' · ');
+
+    if (selecionadas.length === 1) {
+      const arte = selecionadas[0];
+      el.novaRaridadeSelect.value = arte.raridade;
+      el.raridadeAtualInfo.textContent = `1 selecionada · ${detectarTimePeloCaminho(arte)} · ${arte.nome} · Atual: ${PERFIL[arte.raridade].nome} · ${arte.id}`;
+      atualizarPreviewEdicaoRaridade();
+      return;
+    }
+
+    el.raridadeAtualInfo.textContent = `${formatarNumero(selecionadas.length)} selecionada(s) de ${formatarNumero(visiveis.length)} no filtro · ${resumo}`;
+    atualizarPreviewEdicaoRaridade();
   }
 
   async function alterarRaridadeSelecionada() {
-    const arte = artes.find(item => item.id === el.arteEditarSelect.value);
-    if (!arte) {
-      mostrarToast("Selecione uma figurinha para alterar.", true);
+    const ids = idsSelecionadosEdicao();
+    if (!ids.length) {
+      mostrarToast('Selecione ao menos uma figurinha para alterar.', true);
       return;
     }
 
     const novaRaridade = el.novaRaridadeSelect.value;
     if (!PERFIL[novaRaridade]) {
-      mostrarToast("Raridade inválida.", true);
+      mostrarToast('Raridade inválida.', true);
       return;
     }
 
-    if (novaRaridade === arte.raridade) {
-      mostrarToast(`A figurinha já está como ${PERFIL[novaRaridade].nome}.`);
+    const selecionadas = artes.filter(arte => ids.includes(arte.id));
+    const paraAlterar = selecionadas.filter(arte => arte.raridade !== novaRaridade);
+
+    if (!paraAlterar.length) {
+      mostrarToast(`Todas as selecionadas já estão como ${PERFIL[novaRaridade].nome}.`);
       return;
     }
 
-    const duplicada = artes.some(item =>
-      item !== arte && item.caminho === arte.caminho && item.raridade === novaRaridade
+    const chavesFixas = new Set(
+      artes
+        .filter(arte => !ids.includes(arte.id))
+        .map(arte => `${arte.raridade}|${arte.caminho}`)
     );
-
-    if (duplicada) {
-      mostrarToast("Já existe uma arte com esse mesmo caminho nessa raridade.", true);
-      return;
+    const chavesNovas = new Set();
+    for (const arte of paraAlterar) {
+      const chave = `${novaRaridade}|${arte.caminho}`;
+      if (chavesFixas.has(chave) || chavesNovas.has(chave)) {
+        mostrarToast(`Conflito de duplicidade ao mover ${arte.nome}.`, true);
+        return;
+      }
+      chavesNovas.add(chave);
     }
 
-    const raridadeAntiga = arte.raridade;
-    const idAntigo = arte.id;
-    const novoId = await idEstavelArte(arte, novaRaridade);
+    let alteradas = 0;
+    const novosIdsSelecionados = [];
 
-    arte.raridade = novaRaridade;
-    arte.id = novoId;
+    for (const arte of selecionadas) {
+      if (arte.raridade === novaRaridade) {
+        novosIdsSelecionados.push(arte.id);
+        continue;
+      }
 
-    raridadeOverrides[chaveOverride(arte)] = novaRaridade;
+      const idAntigo = arte.id;
+      const novoId = await idEstavelArte(arte, novaRaridade);
+      arte.raridade = novaRaridade;
+      arte.id = novoId;
+
+      raridadeOverrides[chaveOverride(arte)] = novaRaridade;
+      await salvarArtePersistente(arte);
+
+      if (previewArteId === idAntigo) {
+        previewArteId = novoId;
+      }
+
+      novosIdsSelecionados.push(novoId);
+      alteradas += 1;
+    }
+
     salvarOverridesRaridade();
-    await salvarArtePersistente(arte);
     await atualizarStatusPersistencia('ok');
 
-    if (previewArteId === idAntigo) {
-      previewArteId = novoId;
+    if (el.filtroRaridadeAtualSelect.value) {
+      el.filtroRaridadeAtualSelect.value = '';
     }
 
     atualizarTudo();
-    el.arteEditarSelect.value = novoId;
+
+    [...el.arteEditarSelect.options].forEach(opcao => {
+      opcao.selected = novosIdsSelecionados.includes(opcao.value);
+    });
     atualizarInfoEditorRaridade();
 
-    mostrarToast(
-      `${arte.nome}: ${PERFIL[raridadeAntiga].nome} → ${PERFIL[novaRaridade].nome}`
+    mostrarToast(`${formatarNumero(alteradas)} figurinha(s) alterada(s) para ${PERFIL[novaRaridade].nome}.`);
+  }
+
+  async function excluirArteSelecionada() {
+    const ids = idsSelecionadosEdicao();
+    if (!ids.length) {
+      mostrarToast('Selecione ao menos uma figurinha para excluir.', true);
+      return;
+    }
+
+    const selecionadas = artes.filter(arte => ids.includes(arte.id));
+    const nomes = selecionadas.slice(0, 6).map(arte => `${arte.nome} (${PERFIL[arte.raridade].nome})`).join('\n');
+    const resumoExtra = selecionadas.length > 6 ? `\n...e mais ${selecionadas.length - 6} figurinha(s).` : '';
+
+    const confirmou = confirm(
+      `Excluir ${selecionadas.length} figurinha(s) do projeto?\n\n${nomes}${resumoExtra}\n\nElas também serão removidas do salvamento automático.`
     );
+
+    if (!confirmou) return;
+
+    let removeuOverride = false;
+    for (const arte of selecionadas) {
+      await removerArtePersistente(arte);
+      const chave = chaveOverride(arte);
+      if (raridadeOverrides[chave] !== undefined) {
+        delete raridadeOverrides[chave];
+        removeuOverride = true;
+      }
+    }
+
+    artes = artes.filter(arte => !ids.includes(arte.id));
+
+    if (removeuOverride) {
+      salvarOverridesRaridade();
+    }
+
+    if (!artes.some(arte => arte.id === previewArteId)) {
+      previewArteId = artes[0]?.id || '';
+    }
+
+    atualizarTudo();
+    await atualizarStatusPersistencia('ok');
+
+    mostrarToast(`${formatarNumero(selecionadas.length)} figurinha(s) removida(s) do projeto.`);
   }
 
   function obterArtePreviewAtual() {
@@ -1407,6 +1770,9 @@
 
       if (dados.marcasCorte !== undefined) {
         el.marcasCorte.checked = Boolean(dados.marcasCorte);
+      }
+      if (dados.modoEstritoPasta !== undefined) {
+        el.modoEstritoPasta.checked = Boolean(dados.modoEstritoPasta);
       }
     } catch {}
   }
@@ -2650,13 +3016,23 @@
     }
   );
 
+  el.modoEstritoPasta.addEventListener(
+    "change",
+    () => salvarConfigSilencioso()
+  );
+
   el.inputArtes.addEventListener(
     "change",
     event => {
       importarArquivos(
         event.target.files,
         false
-      ).finally(() => {
+      ).catch(erro => {
+        console.error(erro);
+        esconderProgresso("importacao");
+        atualizarTudo();
+        mostrarToast(`Erro ao importar: ${erro.message || erro}`, true);
+      }).finally(() => {
         el.inputArtes.value = "";
       });
     }
@@ -2668,21 +3044,61 @@
       importarArquivos(
         event.target.files,
         true
-      ).finally(() => {
+      ).catch(erro => {
+        console.error(erro);
+        esconderProgresso("importacao");
+        atualizarTudo();
+        mostrarToast(`Erro ao importar pasta: ${erro.message || erro}`, true);
+      }).finally(() => {
         el.inputPasta.value = "";
       });
     }
+  );
+
+  el.filtroTimeSelect.addEventListener(
+    "change",
+    () => atualizarEditorRaridade()
+  );
+
+  el.filtroRaridadeAtualSelect.addEventListener(
+    "change",
+    () => atualizarEditorRaridade()
   );
 
   el.arteEditarSelect.addEventListener(
     "change",
     () => {
       atualizarInfoEditorRaridade();
-      const id = el.arteEditarSelect.value;
-      if (id) {
-        previewArteId = id;
+      const primeiroId = idsSelecionadosEdicao()[0] || '';
+      if (primeiroId) {
+        previewArteId = primeiroId;
         mostrarPrimeiraArte();
       }
+    }
+  );
+
+  el.btnSelecionarFiltradas.addEventListener(
+    "click",
+    () => {
+      [...el.arteEditarSelect.options].forEach(opcao => {
+        if (opcao.value) opcao.selected = true;
+      });
+      atualizarInfoEditorRaridade();
+      const primeiroId = idsSelecionadosEdicao()[0] || '';
+      if (primeiroId) {
+        previewArteId = primeiroId;
+        mostrarPrimeiraArte();
+      }
+    }
+  );
+
+  el.btnLimparSelecaoArtes.addEventListener(
+    "click",
+    () => {
+      [...el.arteEditarSelect.options].forEach(opcao => {
+        opcao.selected = false;
+      });
+      atualizarInfoEditorRaridade();
     }
   );
 
@@ -2691,6 +3107,14 @@
     () => alterarRaridadeSelecionada().catch(erro => {
       console.error(erro);
       mostrarToast(erro.message || "Não foi possível alterar a raridade.", true);
+    })
+  );
+
+  el.btnExcluirArte.addEventListener(
+    "click",
+    () => excluirArteSelecionada().catch(erro => {
+      console.error(erro);
+      mostrarToast(erro.message || "Não foi possível excluir a figurinha.", true);
     })
   );
 
@@ -2954,6 +3378,9 @@
 
   async function inicializarSistema() {
     carregarConfig();
+    if (el.avisoModoLocal) {
+      el.avisoModoLocal.hidden = location.protocol !== "file:";
+    }
     sincronizarCampoCor(el.qrCorEscura, el.qrCorEscuraTexto, '#000000');
     sincronizarCampoCor(el.qrCorClara, el.qrCorClaraTexto, '#FFFFFF');
     sincronizarCampoCor(el.qrCorMoldura, el.qrCorMolduraTexto, '#FFFFFF');
